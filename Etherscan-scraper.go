@@ -22,7 +22,7 @@ type obj struct {
 	Timestamp string `json:timestamp`
 }
 
-var data []obj
+
 
 func main(){
 	router := mux.NewRouter();
@@ -31,30 +31,30 @@ func main(){
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
-
+	var data []obj
 	vars := mux.Vars(r)
 
 	masterWallet := vars["masterWallet"]
 
-	getPage(masterWallet, 1, 0, 0)
+	getPage(masterWallet, 1, 0, 0, &data)
 
 	firstStepLength := len(data)
 
 	for i := 0; i < firstStepLength; i++ {
-		getPage(data[i].Sender, 2, 0, 0)
+		getPage(data[i].Sender, 2, 0, 0, &data)
 	}
 
 	secondStepLength := len(data)
 
 	for p := firstStepLength; p < secondStepLength; p++ {
-		getPage(data[p].Sender, 3, 0, 0)
+		getPage(data[p].Sender, 3, 0, 0, &data)
 	}
 
 	for q := 0; q < len(data); q++ {
-		getLastTransaction(data[q].Sender, data[q].Receiver, q, 0)
+		getLastTransaction(data[q].Sender, data[q].Receiver, q, 0, data)
 	}
 
-	getTimestamps()
+	getTimestamps(data)
 
 	returnData := data
 	data = nil
@@ -62,7 +62,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	// data = nil
 }
 
-func getLastTransaction(addressFrom string, addressTo string, index int, page int) {
+func getLastTransaction(addressFrom string, addressTo string, index int, page int, data []obj) {
 	URL := func() string {
 		if page > 0 {
 			return "https://etherscan.io/txs?a=" + addressTo + "&p=" + strconv.Itoa(page)
@@ -129,12 +129,12 @@ func getLastTransaction(addressFrom string, addressTo string, index int, page in
 		if page == 1 {
 			page++
 		}
-		getLastTransaction(addressFrom, addressTo, index, page)
+		getLastTransaction(addressFrom, addressTo, index, page, data)
 	}
 
 }
 
-func getPage(address string, degree int, page int, count int) {
+func getPage(address string, degree int, page int, count int, data *[]obj) {
 	URL := func() string {
 		if page > 0 {
 			return "https://etherscan.io/txs?a=" + address + "&p=" + strconv.Itoa(page)
@@ -176,7 +176,7 @@ func getPage(address string, degree int, page int, count int) {
 
 				if i == 2 {
 					Receiver = strings.TrimSpace(elem.Text())
-					data = append(data, obj{Sender: Sender, Receiver: Receiver})
+					*data = append(*data, obj{Sender: Sender, Receiver: Receiver})
 					count++
 				}
 			})
@@ -190,12 +190,12 @@ func getPage(address string, degree int, page int, count int) {
 		if page == 1 {
 			page++
 		}
-		getPage(address, degree, page, count)
+		getPage(address, degree, page, count, data)
 	}
 
 }
 
-func getTimestamps() {
+func getTimestamps(data []obj) {
 
 	client, err := ethclient.Dial("https://mainnet.infura.io/QWMgExFuGzhpu2jUr6Pq")
 	if err != nil {
