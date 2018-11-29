@@ -45,6 +45,7 @@ func main() {
 	getTimeStamps()
 
 	fmt.Println(data)
+	data = nil
 }
 
 func getLastTransaction(addressFrom string, addressTo string, index int, page int) {
