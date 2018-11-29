@@ -1,32 +1,31 @@
 package main
 
-import(
-	"net/http"
-	"log"
-	"github.com/PuerkitoBio/goquery"
-	"fmt"
-	"strings"
-	"strconv"
-	"github.com/ethereum/go-ethereum/ethclient"
-	"time"
+import (
 	"context"
+	"fmt"
+	"github.com/PuerkitoBio/goquery"
+	"github.com/ethereum/go-ethereum/ethclient"
+	"log"
 	"math/big"
-
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
 )
 
-type obj struct{
-	sender string `json:sender`
-	receiver string `json:receiver`
-	value string `json:value`
+type obj struct {
+	sender    string `json:sender`
+	receiver  string `json:receiver`
+	value     string `json:value`
 	timestamp string `json:timestamp`
 }
 
 var data []obj
 
-func main(){
+func main() {
 
 	getPage("", 1, 0, 0)
-	
+
 	firstStepLength := len(data)
 
 	for i := 0; i < firstStepLength; i++ {
@@ -60,142 +59,139 @@ func main(){
 		tm := time.Unix(block.Time().Int64(), 0)
 		data[r].timestamp = tm.String()
 	}
-	
+
 	fmt.Println(data)
 }
 
-
-func getLastTransaction(addressFrom string, addressTo string, index int, page int){
-	URL := func () string {
-		if page > 0{
-			return "https://etherscan.io/txs?a=" + addressTo + "&p=" + strconv.Itoa(page) 
+func getLastTransaction(addressFrom string, addressTo string, index int, page int) {
+	URL := func() string {
+		if page > 0 {
+			return "https://etherscan.io/txs?a=" + addressTo + "&p=" + strconv.Itoa(page)
 		} else {
 			return "https://etherscan.io/txs?a=" + addressTo
 		}
-	}() 
+	}()
 
 	res, err := http.Get(URL)
 
-	if err != nil{
+	if err != nil {
 		log.Fatal(err)
 	}
 
 	defer res.Body.Close()
 
-	if res.StatusCode != 200{
+	if res.StatusCode != 200 {
 		log.Fatal("Request failed: ", res.StatusCode)
 	}
 
-
-	transactionFound := false;
-    matchFirst := false;
+	transactionFound := false
+	matchFirst := false
 
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 
-	doc.Find("table.table.table-hover tbody tr").Each(func (i int, row *goquery.Selection){
+	doc.Find("table.table.table-hover tbody tr").Each(func(i int, row *goquery.Selection) {
 
 		var value, timestamp string
 		IN := strings.TrimSpace(row.Find("span.label.label-success.rounded").Text())
 		if IN == "IN" {
 
-			row.Find("td").Each(func (i int, elem *goquery.Selection){
+			row.Find("td").Each(func(i int, elem *goquery.Selection) {
 
 				if transactionFound {
-					return;
+					return
 				}
 
-                if i == 1 {
-					timestamp = strings.TrimSpace(elem.Text());
+				if i == 1 {
+					timestamp = strings.TrimSpace(elem.Text())
 				}
-				
+
 				if i == 3 {
 					if strings.ToLower(addressFrom) == strings.ToLower(strings.TrimSpace(elem.Text())) {
-                        matchFirst = true;
-                    }
-                }
+						matchFirst = true
+					}
+				}
 
-                if i == 6 {
-                    if matchFirst {
-                        value = strings.TrimSpace(elem.Text())
-						data[index].timestamp = timestamp;
+				if i == 6 {
+					if matchFirst {
+						value = strings.TrimSpace(elem.Text())
+						data[index].timestamp = timestamp
 						data[index].value = value
-                        transactionFound = true;
-                    }
-                }
+						transactionFound = true
+					}
+				}
 			})
 		}
 	})
 
-	nextPageExists, _ := doc.Find("a.btn.btn-default.btn-xs.logout").Attr("href");
+	nextPageExists, _ := doc.Find("a.btn.btn-default.btn-xs.logout").Attr("href")
 
-    if !transactionFound && len(nextPageExists) > 0 {
+	if !transactionFound && len(nextPageExists) > 0 {
 		page++
 		if page == 1 {
 			page++
 		}
-        getLastTransaction(addressFrom, addressTo, index, page);
-    }
+		getLastTransaction(addressFrom, addressTo, index, page)
+	}
 
 }
 
-
-func getPage(address string, degree int, page int, count int){
-	URL := func () string {
-		if page > 0{
-			return "https://etherscan.io/txs?a=" + address + "&p=" + strconv.Itoa(page) 
+func getPage(address string, degree int, page int, count int) {
+	URL := func() string {
+		if page > 0 {
+			return "https://etherscan.io/txs?a=" + address + "&p=" + strconv.Itoa(page)
 		} else {
 			return "https://etherscan.io/txs?a=" + address
 		}
-	}() 
+	}()
 
 	fmt.Println("Visiting URL: ", URL)
 	res, err := http.Get(URL)
 
-	if err != nil{
+	if err != nil {
 		log.Fatal(err)
 	}
 
 	defer res.Body.Close()
 
-	if res.StatusCode != 200{
+	if res.StatusCode != 200 {
 		log.Fatal("Request failed: ", res.StatusCode)
 	}
 
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 
-	doc.Find("table.table.table-hover tbody tr").Each(func (i int, row *goquery.Selection){
+	doc.Find("table.table.table-hover tbody tr").Each(func(i int, row *goquery.Selection) {
 
 		var sender, receiver string
 		IN := strings.TrimSpace(row.Find("span.label.label-success.rounded").Text())
 		if IN == "IN" {
 
-			row.Find("span.address-tag").Each(func (i int, elem *goquery.Selection){
+			row.Find("span.address-tag").Each(func(i int, elem *goquery.Selection) {
 
-				if count >= 5{
-					return;
+				if count >= 5 {
+					return
 				}
 
-                if i == 1 {
-					sender = strings.TrimSpace(elem.Text());
-                }
+				if i == 1 {
+					sender = strings.TrimSpace(elem.Text())
+				}
 
-                if i == 2 {
-					receiver = strings.TrimSpace(elem.Text());
-					data = append(data, obj{sender:sender, receiver:receiver})
-					count++;
-                }
+				if i == 2 {
+					receiver = strings.TrimSpace(elem.Text())
+					data = append(data, obj{sender: sender, receiver: receiver})
+					count++
+				}
 			})
 		}
 	})
 
-	nextPageExists, _ := doc.Find("a.btn.btn-default.btn-xs.logout").Attr("href");
+	nextPageExists, _ := doc.Find("a.btn.btn-default.btn-xs.logout").Attr("href")
 
-    if count < 5 && len(nextPageExists) > 0 {
+	if count < 5 && len(nextPageExists) > 0 {
 		page++
 		if page == 1 {
 			page++
 		}
-        getPage(address, degree, page, count);
-    }
+		getPage(address, degree, page, count)
+	}
 
 }
