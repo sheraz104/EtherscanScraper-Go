@@ -24,7 +24,7 @@ var data []obj
 
 func main() {
 
-	getPage("", 1, 0, 0)
+	getPage("0x7acac5d508f839200ebb3bb92efdfe4bd5cd1e49", 1, 0, 0)
 
 	firstStepLength := len(data)
 
@@ -42,23 +42,7 @@ func main() {
 		getLastTransaction(data[q].sender, data[q].receiver, q, 0)
 	}
 
-	client, err := ethclient.Dial("https://mainnet.infura.io/QWMgExFuGzhpu2jUr6Pq")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for r := 0; r < len(data); r++ {
-
-		convertedBlock, _ := strconv.ParseInt(data[r].timestamp, 10, 64)
-		blockNumber := big.NewInt(convertedBlock)
-		block, err := client.BlockByNumber(context.Background(), blockNumber)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		tm := time.Unix(block.Time().Int64(), 0)
-		data[r].timestamp = tm.String()
-	}
+	getTimeStamps()
 
 	fmt.Println(data)
 }
@@ -194,4 +178,25 @@ func getPage(address string, degree int, page int, count int) {
 		getPage(address, degree, page, count)
 	}
 
+}
+
+func getTimeStamps() {
+
+	client, err := ethclient.Dial("https://mainnet.infura.io/QWMgExFuGzhpu2jUr6Pq")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for r := 0; r < len(data); r++ {
+
+		convertedBlock, _ := strconv.ParseInt(data[r].timestamp, 10, 64)
+		blockNumber := big.NewInt(convertedBlock)
+		block, err := client.BlockByNumber(context.Background(), blockNumber)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		tm := time.Unix(block.Time().Int64(), 0)
+		data[r].timestamp = tm.String()
+	}
 }
