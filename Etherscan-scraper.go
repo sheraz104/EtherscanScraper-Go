@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/gorilla/mux"
 	"context"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
@@ -11,41 +12,52 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"encoding/json"
 )
 
 type obj struct {
-	sender    string `json:sender`
-	receiver  string `json:receiver`
-	value     string `json:value`
-	timestamp string `json:timestamp`
+	Sender    string `json:sender`
+	Receiver  string `json:receiver`
+	Value     string `json:value`
+	Timestamp string `json:timestamp`
 }
 
 var data []obj
 
-func main() {
+func main(){
+	router := mux.NewRouter();
+	router.HandleFunc("/{masterWallet}", handler).Methods("GET")
+	http.ListenAndServe(":8080", router)
+}
 
-	getPage("0x7acac5d508f839200ebb3bb92efdfe4bd5cd1e49", 1, 0, 0)
+func handler(w http.ResponseWriter, r *http.Request) {
+
+	vars := mux.Vars(r)
+
+	masterWallet := vars["masterWallet"]
+
+	getPage(masterWallet, 1, 0, 0)
 
 	firstStepLength := len(data)
 
 	for i := 0; i < firstStepLength; i++ {
-		getPage(data[i].sender, 2, 0, 0)
+		getPage(data[i].Sender, 2, 0, 0)
 	}
 
 	secondStepLength := len(data)
 
 	for p := firstStepLength; p < secondStepLength; p++ {
-		getPage(data[p].sender, 3, 0, 0)
+		getPage(data[p].Sender, 3, 0, 0)
 	}
 
 	for q := 0; q < len(data); q++ {
-		getLastTransaction(data[q].sender, data[q].receiver, q, 0)
+		getLastTransaction(data[q].Sender, data[q].Receiver, q, 0)
 	}
 
-	getTimeStamps()
+	getTimestamps()
 
-	fmt.Println(data)
-	data = nil
+	json.NewEncoder(w).Encode(&data)
+	// data = nil
 }
 
 func getLastTransaction(addressFrom string, addressTo string, index int, page int) {
@@ -76,7 +88,7 @@ func getLastTransaction(addressFrom string, addressTo string, index int, page in
 
 	doc.Find("table.table.table-hover tbody tr").Each(func(i int, row *goquery.Selection) {
 
-		var value, timestamp string
+		var Value, Timestamp string
 		IN := strings.TrimSpace(row.Find("span.label.label-success.rounded").Text())
 		if IN == "IN" {
 
@@ -87,7 +99,7 @@ func getLastTransaction(addressFrom string, addressTo string, index int, page in
 				}
 
 				if i == 1 {
-					timestamp = strings.TrimSpace(elem.Text())
+					Timestamp = strings.TrimSpace(elem.Text())
 				}
 
 				if i == 3 {
@@ -98,9 +110,9 @@ func getLastTransaction(addressFrom string, addressTo string, index int, page in
 
 				if i == 6 {
 					if matchFirst {
-						value = strings.TrimSpace(elem.Text())
-						data[index].timestamp = timestamp
-						data[index].value = value
+						Value = strings.TrimSpace(elem.Text())
+						data[index].Timestamp = Timestamp
+						data[index].Value = Value
 						transactionFound = true
 					}
 				}
@@ -146,7 +158,7 @@ func getPage(address string, degree int, page int, count int) {
 
 	doc.Find("table.table.table-hover tbody tr").Each(func(i int, row *goquery.Selection) {
 
-		var sender, receiver string
+		var Sender, Receiver string
 		IN := strings.TrimSpace(row.Find("span.label.label-success.rounded").Text())
 		if IN == "IN" {
 
@@ -157,12 +169,12 @@ func getPage(address string, degree int, page int, count int) {
 				}
 
 				if i == 1 {
-					sender = strings.TrimSpace(elem.Text())
+					Sender = strings.TrimSpace(elem.Text())
 				}
 
 				if i == 2 {
-					receiver = strings.TrimSpace(elem.Text())
-					data = append(data, obj{sender: sender, receiver: receiver})
+					Receiver = strings.TrimSpace(elem.Text())
+					data = append(data, obj{Sender: Sender, Receiver: Receiver})
 					count++
 				}
 			})
@@ -181,7 +193,7 @@ func getPage(address string, degree int, page int, count int) {
 
 }
 
-func getTimeStamps() {
+func getTimestamps() {
 
 	client, err := ethclient.Dial("https://mainnet.infura.io/QWMgExFuGzhpu2jUr6Pq")
 	if err != nil {
@@ -190,7 +202,7 @@ func getTimeStamps() {
 
 	for r := 0; r < len(data); r++ {
 
-		convertedBlock, _ := strconv.ParseInt(data[r].timestamp, 10, 64)
+		convertedBlock, _ := strconv.ParseInt(data[r].Timestamp, 10, 64)
 		blockNumber := big.NewInt(convertedBlock)
 		block, err := client.BlockByNumber(context.Background(), blockNumber)
 		if err != nil {
@@ -198,6 +210,6 @@ func getTimeStamps() {
 		}
 
 		tm := time.Unix(block.Time().Int64(), 0)
-		data[r].timestamp = tm.String()
+		data[r].Timestamp = tm.String()
 	}
 }
