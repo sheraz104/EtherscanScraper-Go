@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/gorilla/mux"
-	"context"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -13,6 +12,7 @@ import (
 	"strings"
 	"time"
 	"encoding/json"
+	"context"
 )
 
 type obj struct {
@@ -27,7 +27,7 @@ var data []obj
 func main(){
 	router := mux.NewRouter();
 	router.HandleFunc("/{masterWallet}", handler).Methods("GET")
-	http.ListenAndServe(":8080", router)
+	http.ListenAndServe(":9090", router)
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +56,9 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 	getTimestamps()
 
-	json.NewEncoder(w).Encode(&data)
+	returnData := data
+	data = nil
+	json.NewEncoder(w).Encode(&returnData)
 	// data = nil
 }
 
@@ -122,7 +124,7 @@ func getLastTransaction(addressFrom string, addressTo string, index int, page in
 
 	nextPageExists, _ := doc.Find("a.btn.btn-default.btn-xs.logout").Attr("href")
 
-	if !transactionFound && len(nextPageExists) > 0 {
+	if !transactionFound && len(strings.TrimSpace(nextPageExists)) > 0 {
 		page++
 		if page == 1 {
 			page++
@@ -182,8 +184,8 @@ func getPage(address string, degree int, page int, count int) {
 	})
 
 	nextPageExists, _ := doc.Find("a.btn.btn-default.btn-xs.logout").Attr("href")
-
-	if count < 5 && len(nextPageExists) > 0 {
+	fmt.Println(nextPageExists,"existss")
+	if count < 5 && len(strings.TrimSpace(nextPageExists)) > 0 {
 		page++
 		if page == 1 {
 			page++
