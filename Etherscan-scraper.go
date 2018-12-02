@@ -1,31 +1,31 @@
 package main
 
 import (
-	"github.com/gorilla/mux"
+	"context"
+	"encoding/json"
 	"fmt"
-	"github.com/PuerkitoBio/goquery"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"log"
 	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
-	"encoding/json"
-	"context"
+
+	"github.com/PuerkitoBio/goquery"
+	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/gorilla/mux"
 )
 
 type obj struct {
-	Sender    string `json:sender`
-	Receiver  string `json:receiver`
-	Value     string `json:value`
-	Timestamp string `json:timestamp`
+	Sender             string `json:sender`
+	Receiver           string `json:receiver`
+	Value              string `json:value`
+	Timestamp          string `json:timestamp`
+	DegreeOfSeparation int    `json:degreeOfSeparation`
 }
 
-
-
-func main(){
-	router := mux.NewRouter();
+func main() {
+	router := mux.NewRouter()
 	router.HandleFunc("/{masterWallet}", handler).Methods("GET")
 	http.ListenAndServe(":9090", router)
 }
@@ -36,33 +36,62 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 	masterWallet := vars["masterWallet"]
 
-	getPage(masterWallet, 1, 0, 0, &data)
+	c0 := make(chan bool)
+	go getPage(masterWallet, 1, 0, 0, &data, c0)
+	<-c0
 
 	firstStepLength := len(data)
+	c1 := make(chan bool)
 
 	for i := 0; i < firstStepLength; i++ {
-		getPage(data[i].Sender, 2, 0, 0, &data)
+		go getPage(data[i].Sender, 2, 0, 0, &data, c1)
+		// time.Sleep(150 * time.Millisecond)
+	}
+
+	for GR1 := 0; GR1 < firstStepLength; GR1++ {
+		<-c1
 	}
 
 	secondStepLength := len(data)
-
+	c2 := make(chan bool)
 	for p := firstStepLength; p < secondStepLength; p++ {
-		getPage(data[p].Sender, 3, 0, 0, &data)
+		go getPage(data[p].Sender, 3, 0, 0, &data, c2)
 	}
 
+	for GR2 := firstStepLength; GR2 < secondStepLength; GR2++ {
+		<-c2
+	}
+
+	c3 := make(chan bool)
 	for q := 0; q < len(data); q++ {
-		getLastTransaction(data[q].Sender, data[q].Receiver, q, 0, data)
+		go getLastTransaction(data[q].Sender, data[q].Receiver, q, 0, data, c3)
+
+		time.Sleep(200 * time.Millisecond)
+
 	}
 
-	getTimestamps(data)
+	for GR3 := 0; GR3 < len(data); GR3++ {
+		<-c3
+	}
+
+	c4 := make(chan bool)
+	for r := 0; r < len(data); r++ {
+		go getTimestamps(data, r, c4)
+		// if r%2 == 0 {
+		// 	time.Sleep(500 * time.Millisecond)
+		// }
+	}
+
+	for GR4 := 0; GR4 < len(data); GR4++ {
+		<-c4
+	}
 
 	returnData := data
 	data = nil
 	json.NewEncoder(w).Encode(&returnData)
-	// data = nil
 }
 
-func getLastTransaction(addressFrom string, addressTo string, index int, page int, data []obj) {
+func getLastTransaction(addressFrom string, addressTo string, index int, page int, data []obj, c chan bool) {
 	URL := func() string {
 		if page > 0 {
 			return "https://etherscan.io/txs?a=" + addressTo + "&p=" + strconv.Itoa(page)
@@ -97,6 +126,7 @@ func getLastTransaction(addressFrom string, addressTo string, index int, page in
 			row.Find("td").Each(func(i int, elem *goquery.Selection) {
 
 				if transactionFound {
+					c <- true
 					return
 				}
 
@@ -115,6 +145,7 @@ func getLastTransaction(addressFrom string, addressTo string, index int, page in
 						Value = strings.TrimSpace(elem.Text())
 						data[index].Timestamp = Timestamp
 						data[index].Value = Value
+						fmt.Println(Value)
 						transactionFound = true
 					}
 				}
@@ -129,12 +160,12 @@ func getLastTransaction(addressFrom string, addressTo string, index int, page in
 		if page == 1 {
 			page++
 		}
-		getLastTransaction(addressFrom, addressTo, index, page, data)
+		go getLastTransaction(addressFrom, addressTo, index, page, data, c)
 	}
 
 }
 
-func getPage(address string, degree int, page int, count int, data *[]obj) {
+func getPage(address string, degree int, page int, count int, data *[]obj, c chan bool) {
 	URL := func() string {
 		if page > 0 {
 			return "https://etherscan.io/txs?a=" + address + "&p=" + strconv.Itoa(page)
@@ -167,6 +198,7 @@ func getPage(address string, degree int, page int, count int, data *[]obj) {
 			row.Find("span.address-tag").Each(func(i int, elem *goquery.Selection) {
 
 				if count >= 5 {
+					c <- true
 					return
 				}
 
@@ -176,7 +208,7 @@ func getPage(address string, degree int, page int, count int, data *[]obj) {
 
 				if i == 2 {
 					Receiver = strings.TrimSpace(elem.Text())
-					*data = append(*data, obj{Sender: Sender, Receiver: Receiver})
+					*data = append(*data, obj{Sender: Sender, Receiver: Receiver, DegreeOfSeparation: degree})
 					count++
 				}
 			})
@@ -184,34 +216,30 @@ func getPage(address string, degree int, page int, count int, data *[]obj) {
 	})
 
 	nextPageExists, _ := doc.Find("a.btn.btn-default.btn-xs.logout").Attr("href")
-	fmt.Println(nextPageExists,"existss")
 	if count < 5 && len(strings.TrimSpace(nextPageExists)) > 0 {
 		page++
 		if page == 1 {
 			page++
 		}
-		getPage(address, degree, page, count, data)
+		go getPage(address, degree, page, count, data, c)
 	}
 
 }
 
-func getTimestamps(data []obj) {
+func getTimestamps(data []obj, r int, c chan bool) {
 
 	client, err := ethclient.Dial("https://mainnet.infura.io/QWMgExFuGzhpu2jUr6Pq")
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	for r := 0; r < len(data); r++ {
-
-		convertedBlock, _ := strconv.ParseInt(data[r].Timestamp, 10, 64)
-		blockNumber := big.NewInt(convertedBlock)
-		block, err := client.BlockByNumber(context.Background(), blockNumber)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		tm := time.Unix(block.Time().Int64(), 0)
-		data[r].Timestamp = tm.String()
+	convertedBlock, _ := strconv.ParseInt(data[r].Timestamp, 10, 64)
+	blockNumber := big.NewInt(convertedBlock)
+	block, err := client.BlockByNumber(context.Background(), blockNumber)
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	tm := time.Unix(block.Time().Int64(), 0)
+	data[r].Timestamp = tm.String()
+	c <- true
 }
